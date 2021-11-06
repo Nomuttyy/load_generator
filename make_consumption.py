@@ -27,17 +27,20 @@ class Load:
         self.operationhd_df.index = [ts.time() for ts in self.operationhd_df.index.to_pydatetime()]
         self.weather2020_df = pd.read_csv(weather2020,index_col=0, parse_dates=True)
 
-    def aircon(self, temp: float, used_minutes: float, time) -> float:
+
+    def aircon(self, temp: float, used_minutes: float, timestamp: datetime) -> float:
         standby_minutes = 30 - used_minutes
         wh = 0
-        getup_time = datetime.datetime.strptime("08:00:00", '%H:%M:%S')
-        goodnight_time = datetime.datetime.strptime("23:59:59", '%H:%M:%S')
-        if getup_time < time < goodnight_time :
+        getup_time = datetime(timestamp.year,timestamp.month,timestamp.day,8)
+        goodnight_time = datetime(timestamp.year,timestamp.month,timestamp.day,23,59)
+        if getup_time < timestamp < goodnight_time :
             if temp > 25:
                 wh += self.rated_power["aircon_cooler"] * used_minutes /60
             elif temp < 15:
                 wh += self.rated_power["aircon_heater"] * used_minutes /60 
-        wh += self.standby_power["aircon_cooler"] * standby_minutes / 60
+        wh += self.standby_power["aircon"] * standby_minutes / 60
+        if wh == 0:
+            wh += self.standby_power["aircon"] * 30 / 60
         return wh
 
 
@@ -66,12 +69,11 @@ class Load:
                 operationdf = self.operationhd_df
             else:
                 operationdf = self.operationwd_df
-            for appliance in self.rated_power.items():
+            for appliance in self.rated_power.keys():
                 used_time = operationdf.loc[ts.time()][appliance]
                 if (appliance == "aircon_cooler") or (appliance == "aircon_heater"):
                     temp = self.weather2020_df.loc[ts]["気温"]
-                    time = ts.time()
-                    load_df.loc[ts][appliance] = self.aircon(temp, used_time, time)
+                    load_df.loc[ts]["aircon"] = self.aircon(temp, used_time, ts)
                 elif appliance == "refrigerator":
                     temp = self.weather2020_df.loc[ts]["気温"]
                     load_df.loc[ts][appliance] = self.refrigerator(temp, used_time)
@@ -80,12 +82,11 @@ class Load:
         return load_df
 
 
-
 if __name__ == "__main__":
     load = Load()
     # print(load.operation_df)
     df = load.run()
-    df.to_csv("result.csv") # CSV出力
+    df.to_csv("result/result.csv") # CSV出力
     
     
 
