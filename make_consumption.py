@@ -1,6 +1,6 @@
 from abc import abstractproperty
 from pathlib import Path
-from datetime import date
+from datetime import date,datetime
 
 import yaml
 import pandas as pd
@@ -27,13 +27,16 @@ class Load:
         self.operationhd_df.index = [ts.time() for ts in self.operationhd_df.index.to_pydatetime()]
         self.weather2020_df = pd.read_csv(weather2020,index_col=0, parse_dates=True)
 
-    def aircon(self, temp: float, used_minutes: float) -> float:
+    def aircon(self, temp: float, used_minutes: float, time) -> float:
         standby_minutes = 30 - used_minutes
         wh = 0
-        if temp > 25:
-            wh += self.rated_power["aircon_cooler"] * used_minutes /60
-        elif temp < 15:
-            wh += self.rated_power["aircon_heater"] * used_minutes /60 
+        getup_time = datetime.datetime.strptime("08:00:00", '%H:%M:%S')
+        goodnight_time = datetime.datetime.strptime("23:59:59", '%H:%M:%S')
+        if getup_time < time < goodnight_time :
+            if temp > 25:
+                wh += self.rated_power["aircon_cooler"] * used_minutes /60
+            elif temp < 15:
+                wh += self.rated_power["aircon_heater"] * used_minutes /60 
         wh += self.standby_power["aircon_cooler"] * standby_minutes / 60
         return wh
 
@@ -67,7 +70,8 @@ class Load:
                 used_time = operationdf.loc[ts.time()][appliance]
                 if (appliance == "aircon_cooler") or (appliance == "aircon_heater"):
                     temp = self.weather2020_df.loc[ts]["気温"]
-                    load_df.loc[ts][appliance] = self.aircon(temp, used_time)
+                    time = ts.time()
+                    load_df.loc[ts][appliance] = self.aircon(temp, used_time, time)
                 elif appliance == "refrigerator":
                     temp = self.weather2020_df.loc[ts]["気温"]
                     load_df.loc[ts][appliance] = self.refrigerator(temp, used_time)
