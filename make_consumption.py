@@ -6,6 +6,7 @@ import yaml
 import pandas as pd
 import jpholiday
 from tqdm import tqdm
+import os
 
 class Load:
     rated_yaml = Path(__file__).parent / "config"/ "rated.yaml" # yaml読み込み
@@ -19,7 +20,7 @@ class Load:
     def __init__(self, 
         wdcsv: Path = Path(__file__).parent / "config"/ "weekday.csv",  # 平日の行動パターンcsvパス指定
         hdcsv: Path = Path(__file__).parent / "config"/ "holiday.csv",  # 休日の行動パターンcsvパス指定
-        weather2020: Path = Path(__file__).parent / "data"/ "hakusantemp_2020.csv"
+        weather2020: Path = Path(__file__).parent / "data"/ "hakusan_templight.csv"
     ) -> None:
         self.operationwd_df = pd.read_csv(wdcsv,index_col=0, parse_dates=True) # csv読み込み
         self.operationwd_df.index = [ts.time() for ts in self.operationwd_df.index.to_pydatetime()]
@@ -48,12 +49,24 @@ class Load:
         return self.rated_power["refrigerator"]
     
 
+    def light(self, daylight_time: float, used_minutes: float) -> float:
+        standby_minutes: float = 30 - used_minutes
+        dark_time: float = 1 - daylight_time
+        wh : float = 0
+        wh += self.rated_power["lightning"] * used_minutes * (dark_time  *2) / 60
+        wh += self.standby_power["lightning"] * standby_minutes * (dark_time  *2) / 60
+        wh += self.rated_power["lightning"] * used_minutes * (daylight_time *2) / 60
+        wh += self.standby_power["lightning"] * standby_minutes * (daylight_time *2) / 60
+        return wh
+
+
     def other_appliances(self, appliances: str, used_minutes: float) -> float:
         standby_minutes: float = 30 - used_minutes
         wh: float = 0
         wh += self.standby_power[appliances] * standby_minutes / 60
         wh += self.rated_power[appliances] * used_minutes / 60
         return wh
+
 
     def run(self):
         """
@@ -72,19 +85,22 @@ class Load:
             for appliance in self.rated_power.keys():
                 used_time = operationdf.loc[ts.time()][appliance]
                 if (appliance == "aircon_cooler") or (appliance == "aircon_heater"):
-                    temp = self.weather2020_df.loc[ts]["気温"]
+                    temp = self.weather2020_df.loc[ts]["temperature"]
                     load_df.loc[ts]["aircon"] = self.aircon(temp, used_time, ts)
                 elif appliance == "refrigerator":
-                    temp = self.weather2020_df.loc[ts]["気温"]
+                    temp = self.weather2020_df.loc[ts]["temperature"]
                     load_df.loc[ts][appliance] = self.refrigerator(temp, used_time)
+                elif appliance == "lightning":
+                    light = self.weather2020_df.loc[ts]["Daylight"]
+                    load_df.loc[ts][appliance] = self.light(light, used_time)
                 else:
                     load_df.loc[ts][appliance] = self.other_appliances(appliance, used_time)
         return load_df
 
 
 if __name__ == "__main__":
+    os.chdir("/home/tomokinomura/ドキュメント/load_generator/")
     load = Load()
-    # print(load.operation_df)
     df = load.run()
     df.to_csv("result/result.csv") # CSV出力
     
